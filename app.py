@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 import google.generativeai as genai
+import certifi
 
 # Load environment variables
 load_dotenv()
@@ -12,12 +13,12 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 
 try:
-    client =  MongoClient(
-        MONGO_URI, 
+    client = MongoClient(
+        MONGO_URI,
         serverSelectionTimeoutMS=5000,
-        tls=True,
-        tlsAllowInvalidCertificates=True
+        tlsCAFile=certifi.where()
     )
+
     client.admin.command('ping')
     db = client["chatbot_db"]
     collection = db["qa"]
