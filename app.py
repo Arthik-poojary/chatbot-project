@@ -12,14 +12,19 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 
 try:
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    client =  MongoClient(
+        MONGO_URI, 
+        serverSelectionTimeoutMS=5000,
+        tls=True,
+        tlsAllowInvalidCertificates=True
+    )
     client.admin.command('ping')
     db = client["chatbot_db"]
     collection = db["qa"]
     print("✅ MongoDB Atlas connected successfully")
 except Exception as e:
     print(f"❌ MongoDB connection failed: {e}")
-    
+
 app = Flask(__name__)
 
 # Configure Google Gemini
