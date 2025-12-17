@@ -21,7 +21,7 @@ try:
 
     client.admin.command('ping')
     db = client["chatbot_db"]
-    collection = db["qa"]
+    qa = db["qa"]
     print("✅ MongoDB Atlas connected successfully")
 except Exception as e:
     print(f"❌ MongoDB connection failed: {e}")
@@ -83,7 +83,7 @@ def home():
 
         # 1️⃣ Check MongoDB for cached answer
         try:
-            record = collection.find_one({"question": question_lower})
+            record = qa.find_one({"question": question_lower})
             if record:
                 answer = record["answer"]
                 print(f"📦 Found in MongoDB: {answer[:50]}...")
@@ -97,7 +97,7 @@ def home():
         # 3️⃣ Save to MongoDB (only if valid answer)
         if answer and not answer.startswith("❌") and not answer.startswith("⏰") and not answer.startswith("⚠️"):
             try:
-                collection.insert_one({
+                qa.insert_one({
                     "question": question_lower,
                     "answer": answer
                 })
@@ -133,8 +133,8 @@ def test_mongo():
     """Test MongoDB connection"""
     try:
         client.admin.command('ping')
-        count = collection.count_documents({})
-        sample = list(collection.find({}, {"_id": 0}).limit(3))
+        count = qa.count_documents({})
+        sample = list(qa.find({}, {"_id": 0}).limit(3))
         return {
             "status": "success", 
             "message": "MongoDB connected",
@@ -148,9 +148,9 @@ def test_mongo():
 def view_db():
     """View all stored Q&A pairs"""
     try:
-        records = list(collection.find({}, {"_id": 0}).limit(50))
+        records = list(qa.find({}, {"_id": 0}).limit(50))
         return {
-            "total": collection.count_documents({}), 
+            "total": qa.count_documents({}), 
             "data": records
         }
     except Exception as e:
@@ -160,7 +160,7 @@ def view_db():
 def clear_db():
     """Clear all cached data (optional - for testing)"""
     try:
-        result = collection.delete_many({})
+        result = qa.delete_many({})
         return {
             "status": "success",
             "message": f"Deleted {result.deleted_count} records"
