@@ -8,9 +8,11 @@ import certifi
 # Load environment variables
 load_dotenv()
 
-# MongoDB connection
- # MongoDB Atlas connection
+# MongoDB Atlas connection
 MONGO_URI = os.getenv("MONGO_URI")
+client = None
+db = None
+qa = None  # Initialize as None
 
 try:
     client = MongoClient(
@@ -18,13 +20,13 @@ try:
         serverSelectionTimeoutMS=5000,
         tlsCAFile=certifi.where()
     )
-
     client.admin.command('ping')
     db = client["chatbot_db"]
     qa = db["qa"]
     print("✅ MongoDB Atlas connected successfully")
 except Exception as e:
     print(f"❌ MongoDB connection failed: {e}")
+    print("⚠️ App will run without database caching")
 
 app = Flask(__name__)
 
@@ -43,12 +45,11 @@ model = genai.GenerativeModel('models/gemini-2.5-flash')
 def query_gemini(question):
     """Query Google Gemini AI"""
     try:
-        # Generate response
         response = model.generate_content(
-            f"Answer this question concisely in 2-3 sentences: {question}",
+            f"Answer this question in detail with examples: {question}",
             generation_config={
                 'temperature': 0.7,
-                'max_output_tokens': 200,
+                'max_output_tokens': 1000,
             }
         )
         
@@ -81,21 +82,22 @@ def home():
 
         question_lower = question.strip().lower()
 
-        # 1️⃣ Check MongoDB for cached answer
-        try:
-            record = qa.find_one({"question": question_lower})
-            if record:
-                answer = record["answer"]
-                print(f"📦 Found in MongoDB: {answer[:50]}...")
-                return render_template("index.html", answer=answer)
-        except Exception as e:
-            print(f"MongoDB error: {e}")
+        # 1️⃣ Check MongoDB for cached answer (only if connected)
+        if qa is not None:
+            try:
+                record = qa.find_one({"question": question_lower})
+                if record:
+                    answer = record["answer"]
+                    print(f"📦 Found in MongoDB: {answer[:50]}...")
+                    return render_template("index.html", answer=answer)
+            except Exception as e:
+                print(f"MongoDB error: {e}")
 
         # 2️⃣ Query Google Gemini
         answer = query_gemini(question)
 
-        # 3️⃣ Save to MongoDB (only if valid answer)
-        if answer and not answer.startswith("❌") and not answer.startswith("⏰") and not answer.startswith("⚠️"):
+        # 3️⃣ Save to MongoDB (only if connected and valid answer)
+        if qa is not None and answer and not answer.startswith("❌") and not answer.startswith("⏰") and not answer.startswith("⚠️"):
             try:
                 qa.insert_one({
                     "question": question_lower,
@@ -120,7 +122,7 @@ def test_api():
             "status": "success",
             "response": response.text,
             "message": "✅ Gemini API is working!",
-            "model": "gemini-1.5-flash"
+            "model": "models/gemini-2.5-flash"
         }
     except Exception as e:
         return {
@@ -131,6 +133,9 @@ def test_api():
 @app.route("/test-mongo")
 def test_mongo():
     """Test MongoDB connection"""
+    if qa is None:
+        return {"status": "error", "message": "MongoDB not connected"}
+    
     try:
         client.admin.command('ping')
         count = qa.count_documents({})
@@ -147,6 +152,9 @@ def test_mongo():
 @app.route("/view-db")
 def view_db():
     """View all stored Q&A pairs"""
+    if qa is None:
+        return {"status": "error", "message": "MongoDB not connected"}
+    
     try:
         records = list(qa.find({}, {"_id": 0}).limit(50))
         return {
@@ -159,6 +167,9 @@ def view_db():
 @app.route("/clear-db")
 def clear_db():
     """Clear all cached data (optional - for testing)"""
+    if qa is None:
+        return {"status": "error", "message": "MongoDB not connected"}
+    
     try:
         result = qa.delete_many({})
         return {
