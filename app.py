@@ -16,10 +16,11 @@ qa = None  # Initialize as None
 
 try:
     client = MongoClient(
-        MONGO_URI,
-        serverSelectionTimeoutMS=5000,
-        tlsCAFile=certifi.where()
-    )
+            MONGO_URI,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+            socketTimeoutMS=10000
+           ) 
     client.admin.command('ping')
     db = client["chatbot_db"]
     qa = db["qa"]
