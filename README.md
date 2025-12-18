@@ -4,6 +4,11 @@ An intelligent chatbot application powered by Google Gemini API with MongoDB Atl
 
 ---
 
+## 🚀 Live Application
+
+Try the chatbot now: **[https://chatbot-project-y8m9.onrender.com/](https://chatbot-project-y8m9.onrender.com/)**
+
+
 ## 🌟 Features
 
 - **AI-Powered Responses**: Uses Google Gemini 2.5 Flash model for intelligent answers
@@ -33,6 +38,7 @@ An intelligent chatbot application powered by Google Gemini API with MongoDB Atl
 - **JavaScript** - Client-side interactivity
 
 ### **Deployment & Security**
+🌐 **Live Demo:** [https://chatbot-project-y8m9.onrender.com/](https://chatbot-project-y8m9.onrender.com/)
 - **Render.com** - Cloud hosting platform (free tier)
 - **Python-dotenv** - Environment variable management
 - **Certifi** - SSL certificate verification
