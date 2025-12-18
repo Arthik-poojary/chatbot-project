@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
@@ -16,11 +16,11 @@ qa = None  # Initialize as None
 
 try:
     client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=10000,
-            connectTimeoutMS=10000,
-            socketTimeoutMS=10000
-           ) 
+        MONGO_URI,
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=10000
+    ) 
     client.admin.command('ping')
     db = client["chatbot_db"]
     qa = db["qa"]
@@ -71,114 +71,119 @@ def query_gemini(question):
         else:
             return f"❌ Error: {error_msg}"
 
+
 @app.route("/", methods=["GET", "POST"])
 def home():
-    answer = None
+    # GET request - show the page
+    if request.method == "GET":
+        return render_template("index.html")
+    
+    # POST request - return answer as JSON
+    question = request.form.get("question")
 
-    if request.method == "POST":
-        question = request.form.get("question")
+    if not question:
+        return jsonify({"error": "Please ask a question."}), 400
 
-        if not question:
-            return render_template("index.html", answer="Please ask a question.")
+    question_lower = question.strip().lower()
 
-        question_lower = question.strip().lower()
+    # 1️⃣ Check MongoDB for cached answer (only if connected)
+    if qa is not None:
+        try:
+            record = qa.find_one({"question": question_lower})
+            if record:
+                answer = record["answer"]
+                print(f"📦 Found in MongoDB: {answer[:50]}...")
+                return jsonify({"answer": answer, "cached": True})
+        except Exception as e:
+            print(f"MongoDB error: {e}")
 
-        # 1️⃣ Check MongoDB for cached answer (only if connected)
-        if qa is not None:
-            try:
-                record = qa.find_one({"question": question_lower})
-                if record:
-                    answer = record["answer"]
-                    print(f"📦 Found in MongoDB: {answer[:50]}...")
-                    return render_template("index.html", answer=answer)
-            except Exception as e:
-                print(f"MongoDB error: {e}")
+    # 2️⃣ Query Google Gemini
+    answer = query_gemini(question)
 
-        # 2️⃣ Query Google Gemini
-        answer = query_gemini(question)
+    # 3️⃣ Save to MongoDB (only if connected and valid answer)
+    if qa is not None and answer and not answer.startswith("❌") and not answer.startswith("⏰") and not answer.startswith("⚠️"):
+        try:
+            qa.insert_one({
+                "question": question_lower,
+                "answer": answer
+            })
+            print(f"💾 Saved to MongoDB")
+        except Exception as e:
+            print(f"Failed to save to MongoDB: {e}")
 
-        # 3️⃣ Save to MongoDB (only if connected and valid answer)
-        if qa is not None and answer and not answer.startswith("❌") and not answer.startswith("⏰") and not answer.startswith("⚠️"):
-            try:
-                qa.insert_one({
-                    "question": question_lower,
-                    "answer": answer
-                })
-                print(f"💾 Saved to MongoDB")
-            except Exception as e:
-                print(f"Failed to save to MongoDB: {e}")
+    # Always return JSON response
+    return jsonify({"answer": answer, "cached": False})
 
-    return render_template("index.html", answer=answer)
 
 @app.route("/test-api")
 def test_api():
     """Test Gemini API connection"""
     if not GEMINI_API_KEY:
-        return {"status": "error", "message": "GEMINI_API_KEY not found in .env"}
+        return jsonify({"status": "error", "message": "GEMINI_API_KEY not found in .env"})
     
     try:
         response = model.generate_content("What is 2+2? Answer in one sentence.")
         
-        return {
+        return jsonify({
             "status": "success",
             "response": response.text,
             "message": "✅ Gemini API is working!",
             "model": "models/gemini-2.5-flash"
-        }
+        })
     except Exception as e:
-        return {
+        return jsonify({
             "status": "error",
             "message": str(e)
-        }
+        })
 
 @app.route("/test-mongo")
 def test_mongo():
     """Test MongoDB connection"""
     if qa is None:
-        return {"status": "error", "message": "MongoDB not connected"}
+        return jsonify({"status": "error", "message": "MongoDB not connected"})
     
     try:
         client.admin.command('ping')
         count = qa.count_documents({})
         sample = list(qa.find({}, {"_id": 0}).limit(3))
-        return {
+        return jsonify({
             "status": "success", 
             "message": "MongoDB connected",
             "documents": count,
             "sample": sample
-        }
+        })
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route("/view-db")
 def view_db():
     """View all stored Q&A pairs"""
     if qa is None:
-        return {"status": "error", "message": "MongoDB not connected"}
+        return jsonify({"status": "error", "message": "MongoDB not connected"})
     
     try:
         records = list(qa.find({}, {"_id": 0}).limit(50))
-        return {
+        return jsonify({
             "total": qa.count_documents({}), 
             "data": records
-        }
+        })
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route("/clear-db")
 def clear_db():
     """Clear all cached data (optional - for testing)"""
     if qa is None:
-        return {"status": "error", "message": "MongoDB not connected"}
+        return jsonify({"status": "error", "message": "MongoDB not connected"})
     
     try:
         result = qa.delete_many({})
-        return {
+        return jsonify({
             "status": "success",
             "message": f"Deleted {result.deleted_count} records"
-        }
+        })
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return jsonify({"status": "error", "message": str(e)})
     
 @app.route("/list-models")
 def list_models():
@@ -191,12 +196,13 @@ def list_models():
                     "name": m.name,
                     "display_name": m.display_name
                 })
-        return {
+        return jsonify({
             "status": "success",
             "available_models": available_models
-        }
+        })
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return jsonify({"status": "error", "message": str(e)})
+
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
